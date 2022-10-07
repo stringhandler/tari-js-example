@@ -41,10 +41,10 @@ pub fn say_hello() -> Result<(), JsValue> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct JsonRequest {
+struct JsonRequest<T> {
     jsonrpc: String,
     method: String,
-    params: HashMap<String, String>,
+    params: T,
     id: u32,
 }
 
@@ -55,7 +55,7 @@ struct JsonRpcResponse<T> {
     result: T,
 }
 
-async fn make_json_request(url: String, method: String, params: HashMap<String, String>) -> Result<JsValue, JsValue> {
+async fn make_json_request<T: Serialize>(url: String, method: String, params: T) -> Result<JsValue, JsValue> {
 
     let mut opts = RequestInit::new();
     opts.method("POST");
@@ -98,8 +98,24 @@ impl TariConnection {
 
     #[wasm_bindgen(js_name="getIdentity")]
     pub async fn get_identity(&self) -> Result<JsValue, JsValue> {
-        let v = make_json_request(self.url.clone(), "get_identity".to_string(), HashMap::new()).await?;
+            let v = make_json_request(self.url.clone(), "get_identity".to_string(), HashMap::<String, String>::new()).await?;
         let res: JsonRpcResponse<GetIdentityResponse> = serde_wasm_bindgen::from_value(v)?;
+        // console::log_1(&JsValue::from_str(res.result.public_address.as_str() ));
+        Ok(serde_wasm_bindgen::to_value(&res.result)?)
+    }
+
+    #[wasm_bindgen(js_name="submitFunctionCall")]
+    pub async fn submit_function_call(&self, template_address: String, method: String) -> Result<JsValue, JsValue> {
+        let req = SubmitTransactionRequest{
+            instructions: vec![],
+            signature: Signature { signature: "222f59f59229dda1f3453a143b12eb2947e2217664be1373a85b25d9cb3ab642".to_string(), public_nonce: "222f59f59229dda1f3453a143b12eb2947e2217664be1373a85b25d9cb3ab642".to_string() },
+            fee: 0,
+            sender_public_key: "222f59f59229dda1f3453a143b12eb2947e2217664be1373a85b25d9cb3ab642".to_string(),
+            num_new_components: 6
+        };
+        let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
+
+        let res: JsonRpcResponse<SubmitTransactionResponse> = serde_wasm_bindgen::from_value(v)?;
         // console::log_1(&JsValue::from_str(res.result.public_address.as_str() ));
         Ok(serde_wasm_bindgen::to_value(&res.result)?)
     }
@@ -111,4 +127,31 @@ struct GetIdentityResponse {
     node_id: String,
     public_key: String,
     public_address: String
+}
+
+#[derive(Serialize, Deserialize)]
+struct SubmitTransactionRequest{
+   instructions: Vec<Instruction>,
+    signature: Signature,
+    fee: u64,
+    sender_public_key: String,
+    num_new_components: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Signature{
+    signature: String,
+    public_nonce: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Instruction {
+    template_address: String,
+    method: String,
+    args: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SubmitTransactionResponse {
+    hash: String
 }
