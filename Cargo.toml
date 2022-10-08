@@ -6,7 +6,7 @@ version = "0.1.0"
 authors = ["You <you@example.com>"]
 categories = ["wasm"]
 readme = "README.md"
-edition = "2018"
+edition = "2021"
 
 [lib]
 crate-type = ["cdylib"]
@@ -21,7 +21,8 @@ lto = true
 #default = ["wee_alloc"]
 
 [dependencies]
-
+tari_engine_types = { git = "https://github.com/tari-project/tari-dan.git", branch = "st-move-engine-types" }
+tari_template_lib= { git="https://github.com/tari-project/tari-dan.git", branch="st-move-engine-types"}
 # The `wasm-bindgen` crate provides the bare minimum functionality needed
 # to interact with JavaScript.
 wasm-bindgen = "0.2.45"
@@ -59,5 +60,3 @@ console_error_panic_hook = "0.1.5"
 [dev-dependencies]
 wasm-bindgen-test = "0.2.45"
 futures = "0.1.27"
-js-sys = "0.3.22"
-wasm-bindgen-futures = "0.3.22"

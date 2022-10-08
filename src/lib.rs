@@ -1,3 +1,4 @@
+
 use std::collections::HashMap;
 use std::convert::TryInto;
 use wasm_bindgen::prelude::*;
@@ -7,8 +8,14 @@ use web_sys::{Request, RequestInit, RequestMode, Response};
 use wasm_bindgen::JsCast;
 use serde::Serialize;
 use serde::Deserialize;
-
-
+use tari_engine_types::hashing::hasher;
+use tari_engine_types::instruction;
+use tari_crypto::keys::PublicKey;
+use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_engine_types::signature::InstructionSignature;
+use tari_template_lib::models::TemplateAddress;
 
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.
@@ -62,7 +69,9 @@ async fn make_json_request<T: Serialize>(url: String, method: String, params: T)
     opts.mode(RequestMode::Cors);
 
     let s = JsonRequest{ jsonrpc: "2.0".to_string(), method: method, params: params, id: 1 };
-    opts.body(Some(&JsValue::from_str(&serde_json::to_string(&s).unwrap())));
+    let v = JsValue::from_str(&serde_json::to_string(&s).unwrap());
+    console::log_1(&v);
+    opts.body(Some(&v));
 
     let request = Request::new_with_str_and_init(&url, &opts)?;
 
@@ -84,16 +93,32 @@ async fn make_json_request<T: Serialize>(url: String, method: String, params: T)
     Ok(json)
 }
 
+fn sign(secret_key: &RistrettoSecretKey, secret_nonce: RistrettoSecretKey, instructions: &[instruction::Instruction]) -> InstructionSignature {
+    InstructionSignature::sign(secret_key, secret_nonce, instructions)
+    // let public_key = RistrettoPublicKey::from_secret_key(secret_key);
+    //
+    // let (nonce, nonce_pk) = RistrettoPublicKey::random_keypair(&mut OsRng) ;
+    // // TODO: implement dan encoding for (a wrapper of) PublicKey
+    // let challenge = hasher("instruction-signature")
+    //     .chain(nonce_pk.as_bytes())
+    //     .chain(public_key.as_bytes())
+    //     .chain(instructions)
+    //     .result();
+    // RistrettoSchnorr::sign(secret_key.clone(), nonce, &challenge).unwrap()
+}
+
 #[wasm_bindgen]
 pub struct TariConnection {
     url: String,
+    // Lol, best remove this at some point
+    secret_key: RistrettoSecretKey
 }
 
 #[wasm_bindgen]
 impl TariConnection {
     #[wasm_bindgen(constructor)]
-    pub fn new(url: String) -> TariConnection {
-        TariConnection { url }
+    pub fn new(url: String, secret_key_hex: String) -> TariConnection {
+        TariConnection { url, secret_key: RistrettoSecretKey::from_hex(&secret_key_hex).unwrap() }
     }
 
     #[wasm_bindgen(js_name="getIdentity")]
@@ -104,19 +129,39 @@ impl TariConnection {
         Ok(serde_wasm_bindgen::to_value(&res.result)?)
     }
 
+
+
     #[wasm_bindgen(js_name="submitFunctionCall")]
     pub async fn submit_function_call(&self, template_address: String, method: String) -> Result<JsValue, JsValue> {
+        // let (secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng) ;
+        // let instructions = vec![Instruction{
+        //     template_address,
+        //     method,
+        //     args: vec![]
+        // }];
+        let instruction = instruction::Instruction::CallFunction{ template_address: TemplateAddress::from_hex(&template_address).unwrap(),
+            function: method.clone(), args: vec![] };
+        let instructions= vec![instruction];
+        // TODO: lol better pls
+        let sec_nonce = RistrettoSecretKey::from_bytes(&[1u8;32]).unwrap();
+        let pub_nonce = RistrettoPublicKey::from_secret_key(&sec_nonce);
+        let signature = sign(&self.secret_key, sec_nonce, &instructions);
+        // let challenge = sign(secret_key, public_key, instructions);
         let req = SubmitTransactionRequest{
-            instructions: vec![],
-            signature: Signature { signature: "222f59f59229dda1f3453a143b12eb2947e2217664be1373a85b25d9cb3ab642".to_string(), public_nonce: "222f59f59229dda1f3453a143b12eb2947e2217664be1373a85b25d9cb3ab642".to_string() },
+            instructions: vec![Instruction{
+                template_address,
+                function: method,
+                args: vec![]
+            }],
+            signature: Signature { signature: signature.signature().get_signature().to_hex(), public_nonce: pub_nonce.to_hex() },
             fee: 0,
-            sender_public_key: "222f59f59229dda1f3453a143b12eb2947e2217664be1373a85b25d9cb3ab642".to_string(),
+            sender_public_key: RistrettoPublicKey::from_secret_key(&self.secret_key).to_hex(),
             num_new_components: 6
         };
         let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
 
+        console::log_1(&v );
         let res: JsonRpcResponse<SubmitTransactionResponse> = serde_wasm_bindgen::from_value(v)?;
-        // console::log_1(&JsValue::from_str(res.result.public_address.as_str() ));
         Ok(serde_wasm_bindgen::to_value(&res.result)?)
     }
 }
@@ -147,7 +192,7 @@ struct Signature{
 #[derive(Serialize, Deserialize)]
 struct Instruction {
     template_address: String,
-    method: String,
+    function: String,
     args: Vec<String>,
 }
 
