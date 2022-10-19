@@ -5,6 +5,37 @@
     <title>My Rust + Webpack project!</title>
   </head>
   <body>
+  <div id="alert"></div>
+   <div>
+     <label for="templates">Templates</label>
+     <select id="templates" name="templates"></select>
+   </div>
+  <div>
+      <h2 id="templateName"></h2>
+      <div>
+          <label for="func">Function</label>
+          <select id="func" name="func"></select>
+      </div>
+      <div>
+          <label for="argExample">Example args</label>
+          <pre id="argExample"></pre>
+      </div>
+      <div>
+      <label for="args">Args</label>
+      <textarea id="args" name="args" rows="8"></textarea></div>
+      <div>
+          <button id="callFunction">Call Function</button>
+      </div>
+      <div>
+          <label for="componentAddress">Component Address</label>
+          <input type="text" id="componentAddress" name="componentAddress" />
+          <button id="callMethod">Call Method</button>
+      </div>
+      <div>
+            <label for="result">Result</label>
+            <pre id="result"></pre>
+      </div>
+  </div>
     <script src="index.js"></script>
   </body>
 </html>

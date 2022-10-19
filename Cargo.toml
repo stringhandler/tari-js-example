@@ -21,8 +21,8 @@ lto = true
 #default = ["wee_alloc"]
 
 [dependencies]
-tari_engine_types = { git = "https://github.com/tari-project/tari-dan.git", branch = "st-move-engine-types" }
-tari_template_lib= { git="https://github.com/tari-project/tari-dan.git", branch="st-move-engine-types"}
+tari_engine_types = { git = "https://github.com/tari-project/tari-dan.git", branch = "development" }
+tari_template_lib= { git="https://github.com/tari-project/tari-dan.git", branch="development"}
 # The `wasm-bindgen` crate provides the bare minimum functionality needed
 # to interact with JavaScript.
 wasm-bindgen = "0.2.45"

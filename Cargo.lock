@@ -896,7 +896,7 @@ dependencies = [
 [[package]]
 name = "tari_engine_types"
 version = "0.1.0"
-source = "git+https://github.com/tari-project/tari-dan.git?branch=st-move-engine-types#6c755b003609908cc9b524b71fac2464c1aa6bdc"
+source = "git+https://github.com/tari-project/tari-dan.git?branch=development#152aad6b2df929d7a5fe3815270f8cd7665d8d15"
 dependencies = [
  "borsh",
  "digest",
@@ -910,7 +910,7 @@ dependencies = [
 [[package]]
 name = "tari_template_abi"
 version = "0.35.1"
-source = "git+https://github.com/tari-project/tari-dan.git?branch=st-move-engine-types#6c755b003609908cc9b524b71fac2464c1aa6bdc"
+source = "git+https://github.com/tari-project/tari-dan.git?branch=development#152aad6b2df929d7a5fe3815270f8cd7665d8d15"
 dependencies = [
  "borsh",
 ]
@@ -918,7 +918,7 @@ dependencies = [
 [[package]]
 name = "tari_template_lib"
 version = "0.35.1"
-source = "git+https://github.com/tari-project/tari-dan.git?branch=st-move-engine-types#6c755b003609908cc9b524b71fac2464c1aa6bdc"
+source = "git+https://github.com/tari-project/tari-dan.git?branch=development#152aad6b2df929d7a5fe3815270f8cd7665d8d15"
 dependencies = [
  "borsh",
  "newtype-ops",
@@ -930,7 +930,7 @@ dependencies = [
 [[package]]
 name = "tari_template_macros"
 version = "0.35.1"
-source = "git+https://github.com/tari-project/tari-dan.git?branch=st-move-engine-types#6c755b003609908cc9b524b71fac2464c1aa6bdc"
+source = "git+https://github.com/tari-project/tari-dan.git?branch=development#152aad6b2df929d7a5fe3815270f8cd7665d8d15"
 dependencies = [
  "proc-macro2 1.0.46",
  "quote 1.0.21",
