@@ -198,7 +198,8 @@ impl TariConnection {
                 type_: "CallFunction".to_string(),
                 template_address,
                 component_address: None,
-                function: method,
+                function: Some(method),
+                method: None,
                 args: vec![],
             }],
             signature: Signature {
@@ -244,7 +245,8 @@ impl TariConnection {
                 type_: "CallMethod".to_string(),
                 template_address,
                 component_address: Some(component_address),
-                function: method,
+                function: None,
+                method: Some(method),
                 args: vec![],
             }],
             signature: Signature {
@@ -336,11 +338,13 @@ struct Instruction {
     type_: String,
     template_address: String,
     component_address: Option<String>,
-    function: String,
+    function: Option<String>,
+    method: Option<String>,
     args: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct SubmitTransactionResponse {
     hash: String,
+    // changes: serde_json::Value,
 }
