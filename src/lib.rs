@@ -15,6 +15,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::console;
 use web_sys::{Request, RequestInit, RequestMode, Response};
+use tari_template_lib::models::ComponentAddress;
+use tari_template_lib::args::Arg;
 
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.
@@ -177,13 +179,8 @@ impl TariConnection {
         &self,
         template_address: String,
         method: String,
+        wait_for_result: bool
     ) -> Result<JsValue, JsValue> {
-        // let (secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng) ;
-        // let instructions = vec![Instruction{
-        //     template_address,
-        //     method,
-        //     args: vec![]
-        // }];
         let instruction = instruction::Instruction::CallFunction {
             template_address: TemplateAddress::from_hex(&template_address).unwrap(),
             function: method.clone(),
@@ -200,8 +197,9 @@ impl TariConnection {
             instructions: vec![Instruction{
                 type_: "CallFunction".to_string(),
                 template_address,
+                component_address: None,
                 function: method,
-                args: vec![]
+                args: vec![],
             }],
             signature: Signature {
                 signature: signature.signature().get_signature().to_hex(),
@@ -210,6 +208,53 @@ impl TariConnection {
             fee: 0,
             sender_public_key: RistrettoPublicKey::from_secret_key(&self.secret_key).to_hex(),
             num_new_components: 2,
+            wait_for_result
+        };
+        let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
+
+        console::log_1(&v);
+        let res: JsonRpcResponse<SubmitTransactionResponse> = serde_wasm_bindgen::from_value(v)?;
+        Ok(serde_wasm_bindgen::to_value(&res.result)?)
+    }
+
+    #[wasm_bindgen(js_name = "submitMethodCall")]
+    pub async fn submit_method_call(
+        &self,
+        template_address: String,
+        component_address: String,
+        method: String,
+        wait_for_result: bool
+    ) -> Result<JsValue, JsValue> {
+        let instruction = instruction::Instruction::CallMethod {
+            template_address: TemplateAddress::from_hex(&template_address).unwrap(),
+            component_address: ComponentAddress::from_hex(&component_address).unwrap(),
+            method: method.clone(),
+            // args: args.iter().map(|a| Arg::Literal(Vec::from_hex(a).unwrap())).collect(),
+            args: vec![],
+        };
+        let instructions = vec![instruction];
+        // TODO: lol better pls
+        let sec_nonce = RistrettoSecretKey::from_bytes(&[1u8; 32]).unwrap();
+        let pub_nonce = RistrettoPublicKey::from_secret_key(&sec_nonce);
+        let signature = sign(&self.secret_key, sec_nonce, &instructions);
+
+        // let challenge = sign(secret_key, public_key, instructions);
+        let req = SubmitTransactionRequest {
+            instructions: vec![Instruction{
+                type_: "CallMethod".to_string(),
+                template_address,
+                component_address: Some(component_address),
+                function: method,
+                args: vec![],
+            }],
+            signature: Signature {
+                signature: signature.signature().get_signature().to_hex(),
+                public_nonce: pub_nonce.to_hex(),
+            },
+            fee: 0,
+            sender_public_key: RistrettoPublicKey::from_secret_key(&self.secret_key).to_hex(),
+            num_new_components: 2,
+            wait_for_result
         };
         let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
 
@@ -276,6 +321,7 @@ struct SubmitTransactionRequest {
     fee: u64,
     sender_public_key: String,
     num_new_components: u64,
+    wait_for_result: bool
 }
 
 #[derive(Serialize, Deserialize)]
@@ -289,6 +335,7 @@ struct Instruction {
     #[serde(rename = "type")]
     type_: String,
     template_address: String,
+    component_address: Option<String>,
     function: String,
     args: Vec<String>,
 }

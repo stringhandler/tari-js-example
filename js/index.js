@@ -113,7 +113,8 @@ async function main() {
         document.getElementById("callFunction").onclick = async function() {
             try {
                 clearError();
-                let submitResponse = await conn.submitFunctionCall(templateAddress, ddFunc.value, JSON.parse(document.getElementById("args").value));
+                // todo: submit args
+                let submitResponse = await conn.submitFunctionCall(templateAddress, ddFunc.value, true);
                 console.log(submitResponse);
                 document.getElementById("result").innerText = JSON.stringify(submitResponse, null, 2);
             } catch (e) {
@@ -127,7 +128,8 @@ async function main() {
         btnCallMethod.onclick = async function() {
             try {
                 clearError();
-                let submitResponse = await conn.submitMethodCall(templateAddress, txtComponentAddress.value, ddFunc.value, JSON.parse(document.getElementById("args").value));
+                // todo: submit args
+                let submitResponse = await conn.submitMethodCall(templateAddress, txtComponentAddress.value, ddFunc.value,  true);
                 console.log(submitResponse);
                 document.getElementById("result").innerText = JSON.stringify(submitResponse, null, 2);
             } catch (e) {
