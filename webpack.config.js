@@ -7,6 +7,7 @@ const dist = path.resolve(__dirname, "dist");
 module.exports = {
   mode: "production",
   entry: {
+    admin: "./js/admin.js",
     index: "./js/index.js"
   },
   output: {
