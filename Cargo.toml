@@ -47,7 +47,7 @@ features = ["console",   'Headers',
     'Request',
     'RequestInit',
     'RequestMode',
-    'Response', "Window"]
+    'Response', "Window", "Storage"]
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires

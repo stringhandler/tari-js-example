@@ -18,6 +18,9 @@ use web_sys::{Request, RequestInit, RequestMode, Response};
 use tari_template_lib::models::ComponentAddress;
 use tari_template_lib::args::Arg;
 
+mod transaction_builder;
+
+
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.
 //
@@ -115,6 +118,45 @@ fn sign(
     //     .result();
     // RistrettoSchnorr::sign(secret_key.clone(), nonce, &challenge).unwrap()
 }
+
+// #[wasm_bindgen]
+// pub struct TariDanWallet {
+//     private_key: RistrettoSecretKey,
+//     public_key: RistrettoPublicKey,
+//     rpc_url: String
+// }
+//
+// const WALLET_LOCAL_STORAGE_KEY_PRIVATE_KEY :&str  = "tari_dan_wallet_private_key";
+// const WALLET_LOCAL_STORAGE_KEY_RPC_URL :&str  = "tari_dan_wallet_rpc_url";
+//
+
+
+
+
+// #[wasm_bindgen]
+// impl TariDanWallet {
+//
+//     #[wasm_bindgen(constructor)]
+//     pub fn new() -> Self {
+//         let store = web_sys::window().local_storage().unwrap().unwrap();
+//         if let Some(private_key) = store.get_item(WALLET_LOCAL_STORAGE_KEY_PRIVATE_KEY).unwrap() {
+//             let private_key = RistrettoSecretKey::from_hex(&private_key).unwrap();
+//             let rpc_url = store.get_item(WALLET_LOCAL_STORAGE_KEY_RPC_URL).unwrap().unwrap();
+//             Self {
+//                 private_key, rpc_url, public_key: RistrettoPublicKey::from_secret_key(&private_key)
+//             }
+//         } else {
+//             let (private_key, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
+//             store.set_item(WALLET_LOCAL_STORAGE_KEY_PRIVATE_KEY, &private_key.to_hex()).unwrap();
+//             let rpc_url = "http://localhost:18200/json_rpc".to_string();
+//             store.set_item(WALLET_LOCAL_STORAGE_KEY_RPC_URL, &rpc_url).unwrap();
+//
+//             Self {
+//                 private_key, rpc_url, public_key: RistrettoPublicKey::from_secret_key(&private_key)
+//             }
+//         }
+//     }
+// }
 
 #[wasm_bindgen]
 pub struct TariConnection {
