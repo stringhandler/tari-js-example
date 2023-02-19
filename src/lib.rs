@@ -30,6 +30,7 @@ use tari_validator_node_client::types::SubmitTransactionResponse;
 use tari_transaction::Transaction;
 use tari_template_lib::prelude::NonFungibleAddress;
 use tari_template_lib::crypto::RistrettoPublicKeyBytes;
+use std::fmt::Write;
 
 mod transaction_builder;
 
@@ -193,6 +194,15 @@ async fn make_json_request<T: Serialize>(
     Ok(json)
 }
 
+fn to_hex(slice: &[u8]) -> String {
+    let mut s = String::with_capacity(2 * slice.len());
+    for byte in slice {
+        write!(s, "{:02X}", byte).expect("could not write hex");
+    }
+    s
+}
+
+
 #[wasm_bindgen]
 pub struct TariConnection {
     url: String,
@@ -317,7 +327,7 @@ impl TariConnection {
                     SubstateAddress::Component(addr) =>  {
                         component_address = addr.clone();
                         console::log_1(&JsValue::from_str(&format!("component address: {}", address)));
-                        return Ok(serde_wasm_bindgen::to_value(&component_address)?);
+                        return Ok(serde_wasm_bindgen::to_value(&to_hex(component_address.hash()))?);
                     } ,
                     _ => {}
                    }
