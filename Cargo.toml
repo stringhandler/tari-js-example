@@ -22,6 +22,7 @@ lto = true
 
 [dependencies]
 tari_engine_types = { git = "https://github.com/tari-project/tari-dan.git", branch = "development" }
+tari_dan_common_types = { git = "https://github.com/tari-project/tari-dan.git", branch = "development" }
 tari_transaction  = { git = "https://github.com/tari-project/tari-dan.git", branch = "development" }
 tari_template_lib= { git="https://github.com/tari-project/tari-dan.git", branch="development"}
 tari_validator_node_client = { git = "https://github.com/tari-project/tari-dan.git", branch="development"}
@@ -67,6 +68,7 @@ futures = "0.1.27"
 
 [patch."https://github.com/tari-project/tari-dan.git"]
 tari_engine_types = { git = "https://github.com/stringhandler/tari-dan.git", branch = "st-remove-rand" }
+tari_dan_common_types = { git =  "https://github.com/stringhandler/tari-dan.git", branch = "st-remove-rand" }
 tari_transaction  = { git = "https://github.com/stringhandler/tari-dan.git", branch = "st-remove-rand" }
 tari_template_lib= { git="https://github.com/stringhandler/tari-dan.git", branch="st-remove-rand"}
 tari_validator_node_client = { git = "https://github.com/stringhandler/tari-dan.git", branch="st-remove-rand"}
