@@ -22,15 +22,19 @@ lto = true
 
 [dependencies]
 tari_engine_types = { git = "https://github.com/tari-project/tari-dan.git", branch = "development" }
+tari_transaction  = { git = "https://github.com/tari-project/tari-dan.git", branch = "development" }
 tari_template_lib= { git="https://github.com/tari-project/tari-dan.git", branch="development"}
+tari_validator_node_client = { git = "https://github.com/tari-project/tari-dan.git", branch="development"}
 # The `wasm-bindgen` crate provides the bare minimum functionality needed
 # to interact with JavaScript.
 wasm-bindgen = "0.2.45"
 js-sys = "0.3.60"
 wasm-bindgen-futures = "0.4.33"
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.15.6" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.16.6" }
+#tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.7" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.85"
+getrandom = { version = "0.2.8", features = ["js"] }
 
 serde-wasm-bindgen = "0.4"
 
@@ -47,7 +51,7 @@ features = ["console",   'Headers',
     'Request',
     'RequestInit',
     'RequestMode',
-    'Response', "Window"]
+    'Response', "Window", "Worker", "WorkerGlobalScope", "Storage"]
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -60,3 +64,9 @@ console_error_panic_hook = "0.1.5"
 [dev-dependencies]
 wasm-bindgen-test = "0.2.45"
 futures = "0.1.27"
+
+[patch."https://github.com/tari-project/tari-dan.git"]
+tari_engine_types = { git = "https://github.com/stringhandler/tari-dan.git", branch = "st-remove-rand" }
+tari_transaction  = { git = "https://github.com/stringhandler/tari-dan.git", branch = "st-remove-rand" }
+tari_template_lib= { git="https://github.com/stringhandler/tari-dan.git", branch="st-remove-rand"}
+tari_validator_node_client = { git = "https://github.com/stringhandler/tari-dan.git", branch="st-remove-rand"}

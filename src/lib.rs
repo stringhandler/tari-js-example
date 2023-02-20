@@ -2,21 +2,38 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::convert::TryInto;
+use js_sys::Array;
 use tari_crypto::keys::PublicKey;
 use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey};
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_engine_types::commit_result::TransactionResult;
 use tari_engine_types::hashing::hasher;
 use tari_engine_types::instruction;
-use tari_engine_types::signature::InstructionSignature;
+use tari_engine_types::instruction::Instruction;
+use tari_engine_types::substate::SubstateAddress;
+use tari_template_lib::args;
+use tari_transaction::InstructionSignature;
 use tari_template_lib::models::TemplateAddress;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::console;
+use web_sys::{console, Window};
 use web_sys::{Request, RequestInit, RequestMode, Response};
 use tari_template_lib::models::ComponentAddress;
 use tari_template_lib::args::Arg;
+use tari_template_lib::constants::PUBLIC_IDENTITY_RESOURCE;
+use web_sys::WorkerGlobalScope;
+use tari_validator_node_client::types::SubmitTransactionRequest;
+use crate::transaction_builder::TransactionBuilder;
+use tari_validator_node_client::types::SubmitTransactionResponse;
+use tari_transaction::Transaction;
+use tari_template_lib::prelude::NonFungibleAddress;
+use tari_template_lib::crypto::RistrettoPublicKeyBytes;
+use std::fmt::Write;
+
+mod transaction_builder;
+
 
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.
@@ -25,6 +42,69 @@ use tari_template_lib::args::Arg;
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+
+// #[wasm_bindgen(module="/wasm-imports.js")]
+// extern "C" {
+//    fn fetch()
+// }
+
+// thread_local! {
+//     static GLOBAL: WindowOrWorker = WindowOrWorker::new();
+// }
+
+enum WindowOrWorker {
+    Window(Window),
+    Worker(WorkerGlobalScope),
+}
+
+impl WindowOrWorker {
+    fn new() -> Self {
+        #[wasm_bindgen]
+        extern "C" {
+            type Global;
+
+            #[wasm_bindgen(method, getter, js_name = Window)]
+            fn window(this: &Global) -> JsValue;
+
+            #[wasm_bindgen(method, getter, js_name = WorkerGlobalScope)]
+            fn worker(this: &Global) -> JsValue;
+        }
+
+        let global: Global = js_sys::global().unchecked_into();
+
+        if !global.window().is_undefined() {
+            Self::Window(global.unchecked_into())
+        } else if !global.worker().is_undefined() {
+            Self::Worker(global.unchecked_into())
+        } else {
+            panic!("Only supported in a browser or web worker");
+        }
+    }
+}
+
+impl WindowOrWorker {
+  fn as_window(&self) -> Option<&Window> {
+    match self {
+      Self::Window(window) => Some(window),
+      _ => None,
+    }
+  }
+
+    fn as_worker(&self) -> Option<&WorkerGlobalScope> {
+        match self {
+            Self::Worker(worker) => Some(worker),
+            _ => None,
+        }
+    }
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = crypto, js_name = "getRandomValues")]
+    fn get_random_values(buf: &mut [u8]);
+}
+
 
 // This is like the `main` function, except for JavaScript.
 #[wasm_bindgen(start)]
@@ -59,6 +139,13 @@ struct JsonRpcResponse<T> {
     id: u32,
     jsonrpc: String,
     result: T,
+    error: Option<JsonRpcError>
+}
+
+#[derive(Serialize, Deserialize)]
+struct JsonRpcError {
+    code: u32,
+    message: String,
 }
 
 async fn make_json_request<T: Serialize>(
@@ -83,9 +170,18 @@ async fn make_json_request<T: Serialize>(
     let request = Request::new_with_str_and_init(&url, &opts)?;
 
     request.headers().set("Content-Type", "application/json")?;
+    let resp_value;
+    let window_or_worker = WindowOrWorker::new();
+    if let Some(window) = window_or_worker.as_window() {
+        resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
+    } else {
+        if let Some(worker) = window_or_worker.as_worker() {
+            resp_value = JsFuture::from(worker.fetch_with_request(&request)).await?;
+        } else {
+            panic!("Only supported in a browser or web worker");
+        }
+    }
 
-    let window = web_sys::window().unwrap();
-    let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
 
     // `resp_value` is a `Response` object.
     assert!(resp_value.is_instance_of::<Response>());
@@ -98,39 +194,38 @@ async fn make_json_request<T: Serialize>(
     Ok(json)
 }
 
-fn sign(
-    secret_key: &RistrettoSecretKey,
-    secret_nonce: RistrettoSecretKey,
-    instructions: &[instruction::Instruction],
-) -> InstructionSignature {
-    InstructionSignature::sign(secret_key, secret_nonce, instructions)
-    // let public_key = RistrettoPublicKey::from_secret_key(secret_key);
-    //
-    // let (nonce, nonce_pk) = RistrettoPublicKey::random_keypair(&mut OsRng) ;
-    // // TODO: implement dan encoding for (a wrapper of) PublicKey
-    // let challenge = hasher("instruction-signature")
-    //     .chain(nonce_pk.as_bytes())
-    //     .chain(public_key.as_bytes())
-    //     .chain(instructions)
-    //     .result();
-    // RistrettoSchnorr::sign(secret_key.clone(), nonce, &challenge).unwrap()
+fn to_hex(slice: &[u8]) -> String {
+    let mut s = String::with_capacity(2 * slice.len());
+    for byte in slice {
+        write!(s, "{:02X}", byte).expect("could not write hex");
+    }
+    s
 }
+
 
 #[wasm_bindgen]
 pub struct TariConnection {
     url: String,
     // Lol, best remove this at some point
     secret_key: RistrettoSecretKey,
+    public_key: RistrettoPublicKey,
 }
 
 #[wasm_bindgen]
 impl TariConnection {
     #[wasm_bindgen(constructor)]
     pub fn new(url: String, secret_key_hex: String) -> TariConnection {
+        let secret_key = RistrettoSecretKey::from_hex(&secret_key_hex).unwrap();
         TariConnection {
             url,
-            secret_key: RistrettoSecretKey::from_hex(&secret_key_hex).unwrap(),
+            public_key: RistrettoPublicKey::from_secret_key(&secret_key),
+            secret_key,
         }
+    }
+
+    #[wasm_bindgen(js_name = "getPublicKey")]
+    pub fn get_public_key(&self) -> JsValue {
+        JsValue::from_str(&self.public_key.to_hex())
     }
 
     #[wasm_bindgen(js_name = "getIdentity")]
@@ -174,47 +269,126 @@ impl TariConnection {
         Ok(serde_wasm_bindgen::to_value(&res.result)?)
     }
 
-    #[wasm_bindgen(js_name = "submitFunctionCall")]
-    pub async fn submit_function_call(
-        &self,
-        template_address: String,
-        method: String,
-        wait_for_result: bool
+    #[wasm_bindgen(js_name = "createAccount")]
+    pub async fn create_account(
+        &self
     ) -> Result<JsValue, JsValue> {
-        let instruction = instruction::Instruction::CallFunction {
-            template_address: TemplateAddress::from_hex(&template_address).unwrap(),
-            function: method.clone(),
-            args: vec![],
-        };
-        let instructions = vec![instruction];
-        // TODO: lol better pls
-        let sec_nonce = RistrettoSecretKey::from_bytes(&[1u8; 32]).unwrap();
-        let pub_nonce = RistrettoPublicKey::from_secret_key(&sec_nonce);
-        let signature = sign(&self.secret_key, sec_nonce, &instructions);
+        let resource_address = PUBLIC_IDENTITY_RESOURCE;
+        // TODO: I manually create the address, but you can use a NonFungibleAddress
+        // instead
+        let mut vec = resource_address.hash().to_vec();
+        // enum type
+        vec.extend_from_slice(&[0]);
+        vec.extend_from_slice(&self.public_key.as_bytes());
 
+        let instruction = Instruction::CallFunction {
+            template_address: TemplateAddress::from([0u8;32]),
+            function: "create".to_string(),
+            // args: args.iter().map(|js| Arg::Literal(Vec::<u8>::from_hex(&js.as_string().unwrap()).unwrap())).collect(),
+            // args: args![NonFungibleAddress::from_bytes(RistrettoPublicKeyBytes::from(self.public_key.as_bytes())).to_hex()],
+            args: vec![Arg::Literal(vec)]
+        };
+
+        let mut bytes= vec![0u8;32];
+        get_random_values(&mut bytes);
+        let sec_nonce = RistrettoSecretKey::from_bytes(&bytes).unwrap();
+        // let pub_nonce = RistrettoPublicKey::from_secret_key(&sec_nonce);
+        // let signature = sign(, sec_nonce, &instructions);
+
+        console::log_1(&JsValue::from_str("instruction created"));
+        let mut builder = Transaction::builder();
+        console::log_1(&JsValue::from_str("instruction created 1"));
+        builder.add_instruction(instruction).with_new_outputs(5);
+        console::log_1(&JsValue::from_str("instruction created 2"));
+        builder.sign_with_nonce(&self.secret_key, sec_nonce);
+        console::log_1(&JsValue::from_str("instruction signed"));
+        let transaction = builder.build();
+        let expected_component = transaction.meta().involved_shards().first().unwrap().clone();
         // let challenge = sign(secret_key, public_key, instructions);
         let req = SubmitTransactionRequest {
-            instructions: vec![Instruction{
-                type_: "CallFunction".to_string(),
-                template_address,
-                component_address: None,
-                function: Some(method),
-                method: None,
-                args: vec![],
-            }],
-            signature: Signature {
-                signature: signature.signature().get_signature().to_hex(),
-                public_nonce: pub_nonce.to_hex(),
-            },
-            fee: 0,
-            sender_public_key: RistrettoPublicKey::from_secret_key(&self.secret_key).to_hex(),
-            num_new_components: 2,
-            wait_for_result
+            transaction,
+            is_dry_run: false,
+            wait_for_result: true,
+            wait_for_result_timeout: Some(60)
+
         };
         let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
 
         console::log_1(&v);
         let res: JsonRpcResponse<SubmitTransactionResponse> = serde_wasm_bindgen::from_value(v)?;
+        if res.error.is_some() {
+            return Err(JsValue::from_str(&res.error.unwrap().message));
+        }
+        let component_address;
+        match res.result.result.unwrap().finalize.result {
+            TransactionResult::Accept(substate_diff) => {
+                for (address, diff) in substate_diff.up_iter() {
+                   match address {
+                    SubstateAddress::Component(addr) =>  {
+                        component_address = addr.clone();
+                        console::log_1(&JsValue::from_str(&format!("component address: {}", address)));
+                        return Ok(serde_wasm_bindgen::to_value(&to_hex(component_address.hash()))?);
+                    } ,
+                    _ => {}
+                   }
+                }
+            }
+            TransactionResult::Reject(reason) => {
+                return Err(JsValue::from_str(&format!("Transaction rejected:{}", reason)));
+            }
+        }
+
+        Err(JsValue::from_str("No component address found"))
+
+    }
+
+
+    #[wasm_bindgen(js_name = "submitFunctionCall")]
+    pub async fn submit_function_call(
+        &self,
+        template_address: String,
+        method: String,
+        args: Array,
+        wait_for_result: bool
+    ) -> Result<JsValue, JsValue> {
+        console::log_1(&JsValue::from_str("Entered submit function call"));
+        let instruction = Instruction::CallFunction {
+            template_address: TemplateAddress::from_hex(&template_address).unwrap(),
+            function: method.clone(),
+            // args: args.iter().map(|js| Arg::Literal(Vec::<u8>::from_hex(&js.as_string().unwrap()).unwrap())).collect(),
+            args: args.iter().map(|js| Arg::Literal(js.as_string().unwrap().as_bytes().to_vec())).collect(),
+        };
+        // TODO: lol better pls
+
+        let mut bytes= vec![0u8;32];
+        get_random_values(&mut bytes);
+        let sec_nonce = RistrettoSecretKey::from_bytes(&bytes).unwrap();
+        // let pub_nonce = RistrettoPublicKey::from_secret_key(&sec_nonce);
+        // let signature = sign(, sec_nonce, &instructions);
+
+        console::log_1(&JsValue::from_str("instruction created"));
+        let mut builder = Transaction::builder();
+        console::log_1(&JsValue::from_str("instruction created 1"));
+        builder.add_instruction(instruction).with_new_outputs(5);
+        console::log_1(&JsValue::from_str("instruction created 2"));
+        builder.sign_with_nonce(&self.secret_key, sec_nonce);
+        console::log_1(&JsValue::from_str("instruction signed"));
+        let transaction = builder.build();
+        // let challenge = sign(secret_key, public_key, instructions);
+        let req = SubmitTransactionRequest {
+            transaction,
+            is_dry_run: false,
+            wait_for_result,
+            wait_for_result_timeout: Some(60)
+
+        };
+        let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
+
+        console::log_1(&v);
+        let res: JsonRpcResponse<SubmitTransactionResponse> = serde_wasm_bindgen::from_value(v)?;
+        if res.error.is_some() {
+            return Err(JsValue::from_str(&res.error.unwrap().message));
+        }
         Ok(serde_wasm_bindgen::to_value(&res.result)?)
     }
 
@@ -224,44 +398,80 @@ impl TariConnection {
         template_address: String,
         component_address: String,
         method: String,
+        args: Array,
         wait_for_result: bool
     ) -> Result<JsValue, JsValue> {
-        let instruction = instruction::Instruction::CallMethod {
-            template_address: TemplateAddress::from_hex(&template_address).unwrap(),
+        let instruction = Instruction::CallMethod {
+            // template_address: TemplateAddress::from_hex(&template_address).unwrap(),
             component_address: ComponentAddress::from_hex(&component_address).unwrap(),
             method: method.clone(),
-            // args: args.iter().map(|a| Arg::Literal(Vec::from_hex(a).unwrap())).collect(),
-            args: vec![],
+            args: args.iter().map(|a| Arg::Literal(Vec::from_hex(&a.as_string().unwrap()).unwrap())).collect(),
+            // args: vec![],
         };
-        let instructions = vec![instruction];
-        // TODO: lol better pls
-        let sec_nonce = RistrettoSecretKey::from_bytes(&[1u8; 32]).unwrap();
-        let pub_nonce = RistrettoPublicKey::from_secret_key(&sec_nonce);
-        let signature = sign(&self.secret_key, sec_nonce, &instructions);
 
+        let mut builder = Transaction::builder();
+        builder.add_instruction(instruction).with_new_outputs(5);
+        builder.sign(&self.secret_key);
+        let transaction = builder.build();
         // let challenge = sign(secret_key, public_key, instructions);
         let req = SubmitTransactionRequest {
-            instructions: vec![Instruction{
-                type_: "CallMethod".to_string(),
-                template_address,
-                component_address: Some(component_address),
-                function: None,
-                method: Some(method),
-                args: vec![],
-            }],
-            signature: Signature {
-                signature: signature.signature().get_signature().to_hex(),
-                public_nonce: pub_nonce.to_hex(),
-            },
-            fee: 0,
-            sender_public_key: RistrettoPublicKey::from_secret_key(&self.secret_key).to_hex(),
-            num_new_components: 2,
-            wait_for_result
+         transaction,
+            is_dry_run: false,
+            wait_for_result,
+            wait_for_result_timeout: Some(60)
+
         };
         let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
 
         console::log_1(&v);
         let res: JsonRpcResponse<SubmitTransactionResponse> = serde_wasm_bindgen::from_value(v)?;
+        if res.error.is_some() {
+            return Err(JsValue::from_str(&res.error.unwrap().message));
+        }
+        Ok(serde_wasm_bindgen::to_value(&res.result)?)
+    }
+
+    pub async fn call_method_and_deposit_buckets(   &self,
+                                              component_address: String,
+                                                    account_address: String,
+                                              method: String,
+                                              args: Array,
+    ) -> Result<JsValue, JsValue> {
+        let instruction = Instruction::CallMethod {
+            // template_address: TemplateAddress::from_hex(&template_address).unwrap(),
+            // template_address: Default::default(),
+            component_address: ComponentAddress::from_hex(&component_address).unwrap(),
+            method: method.clone(),
+            args: args.iter().map(|a| Arg::Literal(Vec::from_hex(&a.as_string().unwrap()).unwrap())).collect(),
+        };
+
+
+        let mut builder = Transaction::builder();
+        builder.add_instruction(instruction)
+            .add_instruction(Instruction::PutLastInstructionOutputOnWorkspace { key: b"bucket".to_vec() })
+            .add_instruction(Instruction::CallMethod {
+                // template_address: TemplateAddress::from_hex([0u8; 32].to_hex().as_str()).unwrap(),
+                component_address: ComponentAddress::from_hex(&account_address).unwrap(),
+                method: "deposit".to_string(),
+                args: vec![Arg::Variable(b"bucket".to_vec())],
+            }).with_new_outputs(5);
+        builder.sign(&self.secret_key);
+        let transaction = builder.build();
+
+        // let challenge = sign(secret_key, public_key, instructions);
+        let req = SubmitTransactionRequest {
+            transaction,
+            wait_for_result: true,
+            is_dry_run: false,
+            wait_for_result_timeout: Some(60)
+        };
+        let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
+
+        console::log_1(&v);
+        let res: JsonRpcResponse<SubmitTransactionResponse> = serde_wasm_bindgen::from_value(v)?;
+        if res.error.is_some() {
+            return Err(JsValue::from_str(&res.error.unwrap().message));
+        }
         Ok(serde_wasm_bindgen::to_value(&res.result)?)
     }
 }
@@ -316,35 +526,35 @@ struct GetIdentityResponse {
     public_address: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct SubmitTransactionRequest {
-    instructions: Vec<Instruction>,
-    signature: Signature,
-    fee: u64,
-    sender_public_key: String,
-    num_new_components: u64,
-    wait_for_result: bool
-}
+// #[derive(Serialize, Deserialize)]
+// struct SubmitTransactionRequest {
+//     instructions: Vec<Instruction>,
+//     signature: Signature,
+//     fee: u64,
+//     sender_public_key: String,
+//     num_new_components: u64,
+//     wait_for_result: bool
+// }
 
-#[derive(Serialize, Deserialize)]
-struct Signature {
-    signature: String,
-    public_nonce: String,
-}
+// #[derive(Serialize, Deserialize)]
+// struct Signature {
+//     signature: String,
+//     public_nonce: String,
+// }
 
-#[derive(Serialize, Deserialize)]
-struct Instruction {
-    #[serde(rename = "type")]
-    type_: String,
-    template_address: String,
-    component_address: Option<String>,
-    function: Option<String>,
-    method: Option<String>,
-    args: Vec<String>,
-}
+// #[derive(Serialize, Deserialize)]
+// struct Instruction {
+//     #[serde(rename = "type")]
+//     type_: String,
+//     template_address: String,
+//     component_address: Option<String>,
+//     function: Option<String>,
+//     method: Option<String>,
+//     args: Vec<String>,
+// }
 
-#[derive(Serialize, Deserialize)]
-struct SubmitTransactionResponse {
-    hash: String,
-    // changes: serde_json::Value,
-}
+// #[derive(Serialize, Deserialize)]
+// struct SubmitTransactionResponse {
+//     hash: String,
+//     // changes: serde_json::Value,
+// }
