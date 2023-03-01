@@ -12,7 +12,7 @@ use tari_engine_types::hashing::hasher;
 use tari_engine_types::instruction;
 use tari_engine_types::instruction::Instruction;
 use tari_engine_types::substate::SubstateAddress;
-use tari_template_lib::args;
+use tari_template_lib::{arg, args};
 use tari_transaction::InstructionSignature;
 use tari_template_lib::models::TemplateAddress;
 use wasm_bindgen::prelude::*;
@@ -31,6 +31,8 @@ use tari_transaction::Transaction;
 use tari_template_lib::prelude::NonFungibleAddress;
 use tari_template_lib::crypto::RistrettoPublicKeyBytes;
 use std::fmt::Write;
+use js_sys::Math::floor;
+use tari_dan_common_types::ShardId;
 
 mod transaction_builder;
 
@@ -84,12 +86,12 @@ impl WindowOrWorker {
 }
 
 impl WindowOrWorker {
-  fn as_window(&self) -> Option<&Window> {
-    match self {
-      Self::Window(window) => Some(window),
-      _ => None,
+    fn as_window(&self) -> Option<&Window> {
+        match self {
+            Self::Window(window) => Some(window),
+            _ => None,
+        }
     }
-  }
 
     fn as_worker(&self) -> Option<&WorkerGlobalScope> {
         match self {
@@ -139,7 +141,7 @@ struct JsonRpcResponse<T> {
     id: u32,
     jsonrpc: String,
     result: T,
-    error: Option<JsonRpcError>
+    error: Option<JsonRpcError>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -202,6 +204,12 @@ fn to_hex(slice: &[u8]) -> String {
     s
 }
 
+fn create_secret_nonce() -> RistrettoSecretKey {
+    let mut bytes = vec![0u8; 32];
+    get_random_values(&mut bytes);
+    RistrettoSecretKey::from_bytes(&bytes).unwrap()
+}
+
 
 #[wasm_bindgen]
 pub struct TariConnection {
@@ -235,7 +243,7 @@ impl TariConnection {
             "get_identity".to_string(),
             HashMap::<String, String>::new(),
         )
-        .await?;
+            .await?;
         let res: JsonRpcResponse<GetIdentityResponse> = serde_wasm_bindgen::from_value(v)?;
         // console::log_1(&JsValue::from_str(res.result.public_address.as_str() ));
         Ok(serde_wasm_bindgen::to_value(&res.result)?)
@@ -260,7 +268,7 @@ impl TariConnection {
         let v = make_json_request(
             self.url.clone(),
             "get_template".to_string(),
-            GetTemplateRequest {template_address: address },
+            GetTemplateRequest { template_address: address },
         )
             .await?;
         console::log_1(&v);
@@ -282,18 +290,18 @@ impl TariConnection {
         vec.extend_from_slice(&self.public_key.as_bytes());
 
         let instruction = Instruction::CallFunction {
-            template_address: TemplateAddress::from([0u8;32]),
+            template_address: TemplateAddress::from([0u8; 32]),
             function: "create".to_string(),
             // args: args.iter().map(|js| Arg::Literal(Vec::<u8>::from_hex(&js.as_string().unwrap()).unwrap())).collect(),
             // args: args![NonFungibleAddress::from_bytes(RistrettoPublicKeyBytes::from(self.public_key.as_bytes())).to_hex()],
-            args: vec![Arg::Literal(vec)]
+            args: vec![Arg::Literal(vec)],
         };
 
-        let mut bytes= vec![0u8;32];
-        get_random_values(&mut bytes);
-        let sec_nonce = RistrettoSecretKey::from_bytes(&bytes).unwrap();
+
         // let pub_nonce = RistrettoPublicKey::from_secret_key(&sec_nonce);
         // let signature = sign(, sec_nonce, &instructions);
+
+        let sec_nonce = create_secret_nonce();
 
         console::log_1(&JsValue::from_str("instruction created"));
         let mut builder = Transaction::builder();
@@ -309,8 +317,7 @@ impl TariConnection {
             transaction,
             is_dry_run: false,
             wait_for_result: true,
-            wait_for_result_timeout: Some(60)
-
+            wait_for_result_timeout: Some(60),
         };
         let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
 
@@ -323,14 +330,14 @@ impl TariConnection {
         match res.result.result.unwrap().finalize.result {
             TransactionResult::Accept(substate_diff) => {
                 for (address, diff) in substate_diff.up_iter() {
-                   match address {
-                    SubstateAddress::Component(addr) =>  {
-                        component_address = addr.clone();
-                        console::log_1(&JsValue::from_str(&format!("component address: {}", address)));
-                        return Ok(serde_wasm_bindgen::to_value(&to_hex(component_address.hash()))?);
-                    } ,
-                    _ => {}
-                   }
+                    match address {
+                        SubstateAddress::Component(addr) => {
+                            component_address = addr.clone();
+                            console::log_1(&JsValue::from_str(&format!("component address: {}", address)));
+                            return Ok(serde_wasm_bindgen::to_value(&to_hex(component_address.hash()))?);
+                        }
+                        _ => {}
+                    }
                 }
             }
             TransactionResult::Reject(reason) => {
@@ -339,7 +346,6 @@ impl TariConnection {
         }
 
         Err(JsValue::from_str("No component address found"))
-
     }
 
 
@@ -349,7 +355,7 @@ impl TariConnection {
         template_address: String,
         method: String,
         args: Array,
-        wait_for_result: bool
+        wait_for_result: bool,
     ) -> Result<JsValue, JsValue> {
         console::log_1(&JsValue::from_str("Entered submit function call"));
         let instruction = Instruction::CallFunction {
@@ -360,7 +366,7 @@ impl TariConnection {
         };
         // TODO: lol better pls
 
-        let mut bytes= vec![0u8;32];
+        let mut bytes = vec![0u8; 32];
         get_random_values(&mut bytes);
         let sec_nonce = RistrettoSecretKey::from_bytes(&bytes).unwrap();
         // let pub_nonce = RistrettoPublicKey::from_secret_key(&sec_nonce);
@@ -379,8 +385,7 @@ impl TariConnection {
             transaction,
             is_dry_run: false,
             wait_for_result,
-            wait_for_result_timeout: Some(60)
-
+            wait_for_result_timeout: Some(60),
         };
         let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
 
@@ -399,7 +404,7 @@ impl TariConnection {
         component_address: String,
         method: String,
         args: Array,
-        wait_for_result: bool
+        wait_for_result: bool,
     ) -> Result<JsValue, JsValue> {
         let instruction = Instruction::CallMethod {
             // template_address: TemplateAddress::from_hex(&template_address).unwrap(),
@@ -411,15 +416,14 @@ impl TariConnection {
 
         let mut builder = Transaction::builder();
         builder.add_instruction(instruction).with_new_outputs(5);
-        builder.sign(&self.secret_key);
+        builder.sign_with_nonce(&self.secret_key, create_secret_nonce());
         let transaction = builder.build();
         // let challenge = sign(secret_key, public_key, instructions);
         let req = SubmitTransactionRequest {
-         transaction,
+            transaction,
             is_dry_run: false,
             wait_for_result,
-            wait_for_result_timeout: Some(60)
-
+            wait_for_result_timeout: Some(60),
         };
         let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
 
@@ -431,31 +435,100 @@ impl TariConnection {
         Ok(serde_wasm_bindgen::to_value(&res.result)?)
     }
 
-    pub async fn call_method_and_deposit_buckets(   &self,
-                                              component_address: String,
-                                                    account_address: String,
-                                              method: String,
-                                              args: Array,
+    #[wasm_bindgen(js_name = "callReadOnlyMethod")]
+    pub async fn call_read_only_method(&self, component_address: String, component_version: u32, method: String, args: Array) -> Result<JsValue, JsValue> {
+        let mut lit_args = vec![];
+        for arg in args.iter() {
+            if let Some(number) = arg.as_f64() {
+                let number = floor(number) as u64;
+                lit_args.push(arg!(number));
+                continue;
+            }
+
+            lit_args.push(arg!(arg.as_string().unwrap()));
+        }
+
+        let component_address =  ComponentAddress::from_hex(&component_address).expect("invalid component address");
+        let instruction = Instruction::CallMethod {
+            component_address: component_address.clone(),
+            method: method.clone(),
+            args: lit_args,
+        };
+
+        let mut builder = Transaction::builder();
+        builder.add_instruction(instruction)
+            .with_new_outputs(5);
+        builder.add_input(ShardId::from_address(&SubstateAddress::Component(component_address), component_version));
+        builder.sign_with_nonce(&self.secret_key, create_secret_nonce());
+        let transaction = builder.build();
+
+        let req = SubmitTransactionRequest {
+            transaction,
+            wait_for_result: true,
+            is_dry_run: true,
+            wait_for_result_timeout: Some(60),
+        };
+        let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
+
+        console::log_1(&v);
+        let res: JsonRpcResponse<SubmitTransactionResponse> = serde_wasm_bindgen::from_value(v)?;
+        if res.error.is_some() {
+            return Err(JsValue::from_str(&res.error.unwrap().message));
+        }
+        Ok(serde_wasm_bindgen::to_value(&res.result)?)
+    }
+
+    #[wasm_bindgen(js_name = "callMethodAndDepositBuckets")]
+    pub async fn call_method_and_deposit_buckets(&self,
+                                                 component_address: String,
+                                                 component_version: u32,
+                                                 account_address: String,
+                                                 account_version: u32,
+                                                 method: String,
+                                                 args: Array,
     ) -> Result<JsValue, JsValue> {
+        console::log_1(&JsValue::from_str("call_method_and_deposit_buckets"));
+
+        console::log_1(&args);
+        let mut lit_args = vec![];
+        for arg in args.iter() {
+            console::log_1(&arg);
+            if let Some(number) = arg.as_f64() {
+                let number = floor(number) as u64;
+                lit_args.push(arg!(number));
+                continue;
+            }
+
+            // todo: add support for other types
+
+            lit_args.push(arg!(arg.as_string().unwrap()));
+        }
+
+        let component_address =  ComponentAddress::from_hex(&component_address).expect("invalid component address");
         let instruction = Instruction::CallMethod {
             // template_address: TemplateAddress::from_hex(&template_address).unwrap(),
             // template_address: Default::default(),
-            component_address: ComponentAddress::from_hex(&component_address).unwrap(),
+            component_address: component_address.clone(),
             method: method.clone(),
-            args: args.iter().map(|a| Arg::Literal(Vec::from_hex(&a.as_string().unwrap()).unwrap())).collect(),
+            args: lit_args,
         };
 
-
+        let component_account_address = ComponentAddress::from_hex(&account_address).unwrap();
         let mut builder = Transaction::builder();
         builder.add_instruction(instruction)
             .add_instruction(Instruction::PutLastInstructionOutputOnWorkspace { key: b"bucket".to_vec() })
             .add_instruction(Instruction::CallMethod {
                 // template_address: TemplateAddress::from_hex([0u8; 32].to_hex().as_str()).unwrap(),
-                component_address: ComponentAddress::from_hex(&account_address).unwrap(),
+                component_address: component_account_address.clone(),
                 method: "deposit".to_string(),
                 args: vec![Arg::Variable(b"bucket".to_vec())],
             }).with_new_outputs(5);
-        builder.sign(&self.secret_key);
+        builder.add_input(ShardId::from_address(&SubstateAddress::Component(component_address), component_version));
+        builder.add_input(ShardId::from_address(&SubstateAddress::Component(component_account_address), account_version));
+        builder.add_output(ShardId::from_address(&SubstateAddress::Component(component_account_address), account_version + 1));
+        console::log_1(&JsValue::from_str("instruction created"));
+        builder.sign_with_nonce(&self.secret_key, create_secret_nonce());
+        console::log_1(&JsValue::from_str("instruction signed"));
         let transaction = builder.build();
 
         // let challenge = sign(secret_key, public_key, instructions);
@@ -463,7 +536,7 @@ impl TariConnection {
             transaction,
             wait_for_result: true,
             is_dry_run: false,
-            wait_for_result_timeout: Some(60)
+            wait_for_result_timeout: Some(60),
         };
         let v = make_json_request(self.url.clone(), "submit_transaction".to_string(), req).await?;
 
@@ -478,19 +551,19 @@ impl TariConnection {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GetTemplateRequest {
-    template_address: String
+    template_address: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GetTemplateResponse {
     registration_metadata: TemplateMetadata,
-    abi: TemplateAbi
+    abi: TemplateAbi,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct TemplateAbi {
     template_name: String,
-    functions: Vec<FunctionDef>
+    functions: Vec<FunctionDef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -510,12 +583,13 @@ struct GetTemplatesResponse {
     templates: Vec<TemplateMetadata>,
 
 }
+
 #[derive(Serialize, Deserialize, Debug)]
 struct TemplateMetadata {
     address: String,
     url: String,
     binary_sha: Vec<u8>,
-    height: u32
+    height: u32,
 }
 
 

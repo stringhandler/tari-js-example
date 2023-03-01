@@ -1396,6 +1396,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "tari_crypto",
+ "tari_dan_common_types",
  "tari_engine_types",
  "tari_template_lib",
  "tari_transaction",
